@@ -21,7 +21,7 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/regulator/consumer.h>
-#include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
 #include <generated/autoconf.h>
 
 #include <linux/version.h>
@@ -130,8 +130,8 @@ enum eph_suspend_mode
 struct eph_platform_data
 {
     enum eph_suspend_mode suspend_mode;
-    unsigned long gpio_reset;
-    unsigned long gpio_chg_irq;
+    struct gpio_desc *gpio_reset;
+    struct gpio_desc *gpio_chg_irq;
     const char *regulator_dvdd;
     const char *regulator_avdd;
     const char *device_settings_name;

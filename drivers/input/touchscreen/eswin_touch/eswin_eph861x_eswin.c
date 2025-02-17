@@ -32,7 +32,6 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/of.h>
-#include <linux/of_gpio.h>
 
 #include "eswin_eph861x_project_config.h"
 #include "eswin_eph861x_tlv.h"
@@ -170,8 +169,13 @@ const struct eph_platform_data *eph_platform_data_get_from_device_tree(struct co
         return (struct eph_platform_data *)ERR_PTR(-ENOMEM);
     }
 
-    ephplatform->gpio_reset = of_get_named_gpio_flags(devnode, "eswin,reset-gpio", 0, NULL);
-    ephplatform->gpio_chg_irq = of_get_named_gpio_flags(devnode, "eswin,irq-gpio", 0, NULL);
+    ephplatform->gpio_reset = devm_gpiod_get_optional(&commsdevice->dev, "eswin,reset", GPIOD_OUT_LOW);
+    if (IS_ERR(ephplatform->gpio_reset))
+        return (struct eph_platform_data *)PTR_ERR(ephplatform->gpio_reset);
+
+    ephplatform->gpio_chg_irq = devm_gpiod_get_optional(&commsdevice->dev, "eswin,irq", GPIOD_OUT_LOW);
+    if (IS_ERR(ephplatform->gpio_chg_irq))
+        return (struct eph_platform_data *)PTR_ERR(ephplatform->gpio_chg_irq);
 
     /* returns pointer to already allocated memory containing the string */
     ret_val = of_property_read_string(devnode, "eswin,regulator_dvdd", &ephplatform->regulator_dvdd);
@@ -280,34 +284,22 @@ int eph_gpio_setup(struct eph_data *ephdata)
     int ret_val;
     dev_dbg(&ephdata->commsdevice->dev, "%s >\n", __func__);
 
-    ret_val = gpio_request(ephdata->ephplatform->gpio_chg_irq, "irq-gpio");
+    ret_val = gpiod_direction_input(ephdata->ephplatform->gpio_chg_irq);
     if (ret_val)
     {
-        dev_err(&ephdata->commsdevice->dev, "gpio_request %lu (%d)", ephdata->ephplatform->gpio_chg_irq, ret_val);
+        dev_err(&ephdata->commsdevice->dev, "gpio_direction_input (%d)", ret_val);
         return ret_val;
     }
-    ret_val = gpio_direction_input(ephdata->ephplatform->gpio_chg_irq);
-    if (ret_val)
-    {
-        dev_err(&ephdata->commsdevice->dev, "gpio_direction_input %lu (%d)", ephdata->ephplatform->gpio_chg_irq, ret_val);
-        return ret_val;
-    }
-    dev_dbg(&ephdata->commsdevice->dev, "gpio_chg_irq %lu IN %d\n", ephdata->ephplatform->gpio_chg_irq, (u8)gpio_get_value(ephdata->ephplatform->gpio_chg_irq));
+    dev_dbg(&ephdata->commsdevice->dev, "gpio_chg_irq IN %d\n", (u8)gpiod_get_value(ephdata->ephplatform->gpio_chg_irq));
 
-    ret_val = gpio_request(ephdata->ephplatform->gpio_reset, "reset-gpio");
-    if (ret_val)
-    {
-        dev_err(&ephdata->commsdevice->dev, "gpio_request %lu (%d)", ephdata->ephplatform->gpio_reset, ret_val);
-        return ret_val;
-    }
     /* Initialise so that we are holding the device in reset until power has been applied */
-    ret_val = gpio_direction_output(ephdata->ephplatform->gpio_reset, GPIO_RESET_YES_LOW);
+    ret_val = gpiod_direction_output(ephdata->ephplatform->gpio_reset, GPIO_RESET_YES_LOW);
     if (ret_val)
     {
-        dev_err(&ephdata->commsdevice->dev, "gpio_direction_output %lu (%d)", ephdata->ephplatform->gpio_reset, ret_val);
+        dev_err(&ephdata->commsdevice->dev, "gpio_direction_output (%d)", ret_val);
         return ret_val;
     }
-    dev_dbg(&ephdata->commsdevice->dev, "gpio_reset %lu OUT %d\n", ephdata->ephplatform->gpio_reset, GPIO_RESET_YES_LOW);
+    dev_dbg(&ephdata->commsdevice->dev, "gpio_reset OUT %d\n", GPIO_RESET_YES_LOW);
 
     dev_dbg(&ephdata->commsdevice->dev, "%s <\n", __func__);
 
@@ -351,7 +343,7 @@ void eph_regulator_enable(struct eph_data *ephdata)
         return;
     }
 
-    gpio_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_YES_LOW);
+    gpiod_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_YES_LOW);
 
     ret_val = regulator_enable(ephdata->reg_vdd);
     if (ret_val)
@@ -370,7 +362,7 @@ void eph_regulator_enable(struct eph_data *ephdata)
     /* According to power sequencing specification, RESET line must be kept 
      * low until some time after regulators come up to voltage */
     msleep(EPH_REGULATOR_DELAY);
-    gpio_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_NO_HIGH);
+    gpiod_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_NO_HIGH);
     //TODO this additional delay should not be needed
     /* Delay to prevent poor signals after power up. This will allow device time to "settle" before baseline */
     msleep(EPH_POWERON_DELAY);
@@ -404,7 +396,7 @@ void eph_recovery_device(struct eph_data *ephdata)
     int ret_val;
 
     disable_irq(ephdata->chg_irq);
-    gpio_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_YES_LOW);
+    gpiod_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_YES_LOW);
     if (ephdata->reg_vdd && regulator_is_enabled(ephdata->reg_vdd))
         regulator_disable(ephdata->reg_vdd);
     if (ephdata->reg_avdd && regulator_is_enabled(ephdata->reg_avdd))
@@ -419,7 +411,7 @@ void eph_recovery_device(struct eph_data *ephdata)
 
     msleep(20); // ic spec at least 10ms
 
-    gpio_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_NO_HIGH);
+    gpiod_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_NO_HIGH);
 
     // wait ic stable, ic spec should no comms action before ic has
     // first data ready
@@ -436,10 +428,10 @@ void eph_recovery_device(struct eph_data *ephdata)
 void eph_reset_device(struct eph_data *ephdata)
 {
 
-    dev_dbg(&ephdata->commsdevice->dev, "%s gpio is %ld >\n", __func__, ephdata->ephplatform->gpio_reset);
-    gpio_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_YES_LOW);
+    dev_dbg(&ephdata->commsdevice->dev, "%s gpio is >\n", __func__);
+    gpiod_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_YES_LOW);
     msleep(1);
-    gpio_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_NO_HIGH);
+    gpiod_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_NO_HIGH);
     msleep(EPH_POWERON_DELAY);
 
     return;

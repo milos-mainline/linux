@@ -125,7 +125,7 @@ int eph_read_report(struct eph_data *ephdata, u8 *buf)
 
 u8 eph_read_chg(struct eph_data *ephdata)
 {
-    u8 ret_val = (u8)gpio_get_value(ephdata->ephplatform->gpio_chg_irq);
+    u8 ret_val = (u8)gpiod_get_value(ephdata->ephplatform->gpio_chg_irq);
     return ret_val;
 }
 
