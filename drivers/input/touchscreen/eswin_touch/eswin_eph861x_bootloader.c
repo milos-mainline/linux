@@ -29,7 +29,6 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/of.h>
-#include <linux/of_gpio.h>
 
 #include "eswin_eph861x_project_config.h"
 #include "eswin_eph861x_tlv.h"
@@ -256,9 +255,9 @@ int eph_chg_force_bootloader(struct eph_data *ephdata)
     msleep((EPH_POWERON_DELAY));
 #else
     for (int i = 0; i < 10; i++) {
-        gpio_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_YES_LOW);
+        gpiod_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_YES_LOW);
         msleep(EPH_RESET_HOLD_TIME);
-        gpio_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_NO_HIGH);
+        gpiod_set_value(ephdata->ephplatform->gpio_reset, GPIO_RESET_NO_HIGH);
         msleep((EPH_POWERON_DELAY));
     }
 #endif
@@ -272,7 +271,7 @@ int eph_chg_force_bootloader(struct eph_data *ephdata)
 int eph_bootloader_release_chg(struct eph_data *ephdata)
 {
    int ret_val;
-   ret_val = gpio_direction_input(ephdata->ephplatform->gpio_chg_irq);
+   ret_val = gpiod_direction_input(ephdata->ephplatform->gpio_chg_irq);
    return ret_val;
 }
 
