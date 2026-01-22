@@ -56,7 +56,7 @@
 	gpio-keys {
 		compatible = "gpio-keys";
 
-		pinctrl-0 = <&volume_up_default>;
+		pinctrl-0 = <&volume_up_default>, <&hall_sensor_default>;
 		pinctrl-names = "default";
 
 		/* Powered by the always-on vreg_l10b */
@@ -1083,6 +1083,13 @@
 		function = "gpio";
 		drive-strength = <2>;
 		bias-pull-up;
+	};
+
+	hall_sensor_default: hall-sensor-default-state {
+		pins = "gpio70";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
 	};
 
 	aw86938_int_default: aw86938-int-default-state {
