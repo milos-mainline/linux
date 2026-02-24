@@ -27,6 +27,7 @@ properties:
               - qcom,hawi-sndcard
               - qcom,kaanapali-sndcard
               - qcom,maili-sndcard
+              - qcom,milos-sndcard
               - qcom,sm8475-sndcard
               - qcom,sm8550-sndcard
               - qcom,sm8650-sndcard
