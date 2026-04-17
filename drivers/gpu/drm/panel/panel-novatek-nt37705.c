@@ -299,6 +299,7 @@ nt37705_create_backlight(struct mipi_dsi_device *dsi)
 	struct device *dev = &dsi->dev;
 	const struct backlight_properties props = {
 		.type = BACKLIGHT_RAW,
+		.scale = BACKLIGHT_SCALE_NON_LINEAR,
 		.brightness = 4095,
 		.max_brightness = 4095,
 	};
