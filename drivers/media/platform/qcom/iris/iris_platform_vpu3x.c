@@ -12,7 +12,6 @@
 #include "iris_vpu_buffer.h"
 #include "iris_vpu_common.h"
 
-#include "iris_platform_milos.h"
 #include "iris_platform_qcs8300.h"
 #include "iris_platform_sm8550.h"
 #include "iris_platform_sm8650.h"
