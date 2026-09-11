@@ -34,6 +34,7 @@
 #include <linux/irq.h>
 #include <linux/hardirq.h>
 #include <linux/of.h>
+#include <linux/of_gpio.h>
 #include <linux/slab.h>
 #include <linux/regulator/consumer.h>
 #include <linux/gpio.h>
@@ -41,7 +42,7 @@
 #include <linux/dmapool.h>
 #include <linux/pinctrl/consumer.h>
 
-//#include <linux/soc/qcom/panel_event_notifier.h>
+#include <linux/soc/qcom/panel_event_notifier.h>
 #include "eswin_eph861x_project_config.h"
 #include "eswin_eph861x_types.h"
 #include "eswin_eph861x_comms.h"
@@ -57,7 +58,7 @@
 /* Touchscreen absolute values */
 #define EPH_MAX_HEIGHT_WIDTH      255u
 
-#if 0
+#if defined(CONFIG_DRM)
 static struct drm_panel *active_panel;
 static void eph_panel_notifier_callback(enum panel_event_notifier_tag tag,
 		 struct panel_event_notification *event, void *client_data);
@@ -440,7 +441,7 @@ static int eph_acquire_irq(struct eph_data *ephdata)
 
     if (!ephdata->chg_irq)
     {
-        ephdata->chg_irq = gpiod_to_irq(ephdata->ephplatform->gpio_chg_irq);
+        ephdata->chg_irq = gpio_to_irq(ephdata->ephplatform->gpio_chg_irq);
 
         commsdevice_name = eph_comms_devicename_get(ephdata);
 
@@ -460,7 +461,7 @@ static int eph_acquire_irq(struct eph_data *ephdata)
         }
 
         /* Presence of ephdata->chg_irq means IRQ initialised */
-        dev_info(&ephdata->commsdevice->dev, "zxz gpio_to_irq -> %d\n", ephdata->chg_irq);
+        dev_info(&ephdata->commsdevice->dev, "zxz gpio_to_irq %lu -> %d\n", ephdata->ephplatform->gpio_chg_irq, ephdata->chg_irq);
     }
     else
     {
@@ -500,12 +501,12 @@ static int eph_probe_regulators(struct eph_data *ephdata)
     dev_dbg(dev, "%s >\n", __func__);
 
     /* Must have reset GPIO to use regulator support */
-    if (IS_ERR(ephdata->ephplatform->gpio_reset))
+    if (!gpio_is_valid(ephdata->ephplatform->gpio_reset))
     {
         ret_val = -EINVAL;
         goto fail;
     }
-    if (IS_ERR(ephdata->ephplatform->gpio_chg_irq))
+    if (!gpio_is_valid(ephdata->ephplatform->gpio_chg_irq))
     {
         ret_val = -EINVAL;
         goto fail;
@@ -540,6 +541,8 @@ fail_release:
 fail:
     ephdata->reg_vdd = NULL;
     ephdata->reg_avdd = NULL;
+    gpio_free(ephdata->ephplatform->gpio_reset);
+    gpio_free(ephdata->ephplatform->gpio_chg_irq);
     return ret_val;
 }
 
@@ -1558,12 +1561,12 @@ static void eph_input_close(struct input_dev *inputdev)
     }
 }
 
-#if 0
+#if defined(CONFIG_DRM) //|| defined(CONFIG_BOARD_CLOUDRIPPER)
 static int eph_dev_enter_lp_mode(struct eph_data *ephdata);
 static int eph_dev_enter_normal_mode(struct eph_data *ephdata);
 #endif
 
-#if 0
+#if defined(CONFIG_DRM)
 static void eph_panel_notifier_callback(enum panel_event_notifier_tag tag,
 		 struct panel_event_notification *notification, void *client_data)
 {
@@ -1900,7 +1903,7 @@ ic_reset:
     return;
 }
 
-#if 0
+#if defined(CONFIG_DRM)
 static int eph_check_dt(struct device_node *np)
 {
 	int i;
@@ -1985,7 +1988,7 @@ static int eph_probe(struct comms_device *commsdevice, const struct comms_device
     int device_info_read_retry = 0;
     struct device *dev = &commsdevice->dev;
 
-    //struct device_node *node = commsdevice->dev.of_node;
+    struct device_node *node = commsdevice->dev.of_node;
     dev_dbg(dev, "%s >>>\n", __func__);
     pr_err("eph_probe----11--100000ms--\n");
 
@@ -2002,7 +2005,7 @@ static int eph_probe(struct comms_device *commsdevice, const struct comms_device
     {
         return PTR_ERR(ephplatform);
     }
-#if 0
+#if defined(CONFIG_DRM)
 	ret_val = eph_check_dt(node);
 	if (ret_val == -EPROBE_DEFER)
     {
@@ -2025,7 +2028,6 @@ static int eph_probe(struct comms_device *commsdevice, const struct comms_device
         return -ENOMEM;
     }
 
-#if 0
     ephdata->bl = backlight_device_get_by_type(BACKLIGHT_RAW);
 
     if (ephdata->bl) {
@@ -2036,7 +2038,6 @@ static int eph_probe(struct comms_device *commsdevice, const struct comms_device
         ret_val = -EPROBE_DEFER;
         goto err_free_mem;
     }
-#endif
 
     INIT_WORK(&ephdata->force_baseline_work, eph_trigger_baseline_work);
     INIT_DELAYED_WORK(&ephdata->heartbeat_work, heartbeat_work_handler);
@@ -2151,7 +2152,7 @@ static int eph_probe(struct comms_device *commsdevice, const struct comms_device
         goto err_free_irq;
     }
 
-#if 0
+#if defined(CONFIG_DRM)
     eph_register_for_panel_events(node, ephdata);
     // ephdata->notifier.notifier_call = eph_notifier_callback;
     // ret_val = msm_drm_register_client(&ephdata->notifier);
@@ -2185,6 +2186,8 @@ err_free_irq:
         free_irq(ephdata->chg_irq, ephdata);
     }
 
+    gpio_free(ephdata->ephplatform->gpio_reset);
+    gpio_free(ephdata->ephplatform->gpio_chg_irq);
     if(ephdata->reg_vdd)
     {
         regulator_put(ephdata->reg_vdd);
@@ -2213,7 +2216,7 @@ static void eph_remove(struct comms_device *commsdevice)
     sysfs_remove_group(&commsdevice->dev.kobj, &eph_fw_attr_group);
     eph_sysfs_mem_access_remove(ephdata);
 
-#if 0
+#if defined(CONFIG_DRM)
     if (ephdata->notifier_cookie)
 			panel_event_notifier_unregister(ephdata->notifier_cookie);
 // #elif defined(CONFIG_BOARD_CLOUDRIPPER)
@@ -2224,6 +2227,9 @@ static void eph_remove(struct comms_device *commsdevice)
     {
         free_irq(ephdata->chg_irq, ephdata);
     }
+
+    gpio_free(ephdata->ephplatform->gpio_reset);
+    gpio_free(ephdata->ephplatform->gpio_chg_irq);
 
     if(ephdata->reg_avdd)
     {
@@ -2255,7 +2261,7 @@ static void eph_remove(struct comms_device *commsdevice)
 #endif
 }
 
-#if 0
+#if defined(CONFIG_DRM) //|| defined(CONFIG_BOARD_CLOUDRIPPER)
 int eph_enable_report_event(struct device *dev, int enable)
 {
     int ret = 0;
