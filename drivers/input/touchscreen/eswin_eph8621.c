@@ -67,7 +67,9 @@ static int eswin_spi_read(struct eswin_touch *ts, u16 len, u8 *buf)
 	if (error)
 		return error;
 
-	memcpy(buf, ts->rx_buf, len);
+	if (buf != ts->rx_buf)
+		memcpy(buf, ts->rx_buf, len);
+
 	return 0;
 }
 
@@ -91,7 +93,11 @@ static int eswin_comms_two_stage_read(struct eswin_touch *ts, u8 *buf)
 	udelay(50);
 
 	/* Stage 2: Read full packet (Header + Payload) */
-	return eswin_spi_read(ts, payload_len + TLV_HEADER_SIZE, buf);
+	error = eswin_spi_read(ts, payload_len + TLV_HEADER_SIZE, buf);
+	if (error)
+		return error;
+
+	return payload_len;
 }
 
 static void eswin_report_contact(struct eswin_touch *ts, u8 *payload)
@@ -103,6 +109,11 @@ static void eswin_report_contact(struct eswin_touch *ts, u8 *payload)
 	u8 width = payload[6];
 	u8 height = payload[7];
 	bool active = false;
+
+	if (slot >= ESWIN_MAX_TOUCHES) {
+		dev_warn_ratelimited(ts->dev, "Invalid slot ID: %d\n", slot);
+		return;
+	}
 
 	switch (touch_type) {
 	case CONTACT_TYPE:
@@ -126,16 +137,28 @@ static void eswin_report_contact(struct eswin_touch *ts, u8 *payload)
 	}
 }
 
-static void eswin_process_report(struct eswin_touch *ts, u8 *buf)
+static void eswin_process_report(struct eswin_touch *ts, u8 *buf, unsigned int payload_len)
 {
-	u16 total_len = buf[TLV_LENGTH_FIELD] | (buf[TLV_LENGTH_FIELD + 1] << 8);
+	u16 total_len = payload_len + TLV_HEADER_SIZE;
 	u16 offset = TLV_HEADER_SIZE;
 
 	if (buf[TLV_TYPE_FIELD] != TLV_REPORT_DATA)
 		return;
 
-	while (offset < total_len + TLV_HEADER_SIZE) {
+	while (offset < total_len) {
 		u8 ev_len = buf[offset] & EVENT_REPORT_LENGTH_MASK;
+
+		/* Event length must cover the 8-byte payload (ev_len is exclusive of the 1-byte header) */
+		if (ev_len < 7) {
+			dev_warn_ratelimited(ts->dev, "Malformed event length: %d\n", ev_len);
+			break;
+		}
+
+		/* Ensure at least 8 bytes remain for a full contact payload */
+		if (total_len - offset < 8) {
+			dev_warn_ratelimited(ts->dev, "Truncated touch payload\n");
+			break;
+		}
 
 		eswin_report_contact(ts, &buf[offset]);
 		offset += (ev_len + 1);
@@ -148,11 +171,11 @@ static void eswin_process_report(struct eswin_touch *ts, u8 *buf)
 static irqreturn_t eswin_interrupt(int irq, void *dev_id)
 {
 	struct eswin_touch *ts = dev_id;
-	int error;
+	int payload_len;
 
-	error = eswin_comms_two_stage_read(ts, ts->rx_buf);
-	if (!error)
-		eswin_process_report(ts, ts->rx_buf);
+	payload_len = eswin_comms_two_stage_read(ts, ts->rx_buf);
+	if (payload_len > 0)
+		eswin_process_report(ts, ts->rx_buf, payload_len);
 
 	return IRQ_HANDLED;
 }
