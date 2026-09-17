@@ -148,7 +148,10 @@ static void eswin_process_report(struct eswin_touch *ts, u8 *buf, unsigned int p
 	while (offset < total_len) {
 		u8 ev_len = buf[offset] & EVENT_REPORT_LENGTH_MASK;
 
-		/* Event length must cover the 8-byte payload (ev_len is exclusive of the 1-byte header) */
+		/*
+		 * Event length must cover the 8-byte payload (ev_len is
+		 * exclusive of the 1-byte header)
+		 */
 		if (ev_len < 7) {
 			dev_warn_ratelimited(ts->dev, "Malformed event length: %d\n", ev_len);
 			break;
@@ -174,8 +177,12 @@ static irqreturn_t eswin_interrupt(int irq, void *dev_id)
 	int payload_len;
 
 	payload_len = eswin_comms_two_stage_read(ts, ts->rx_buf);
-	if (payload_len > 0)
-		eswin_process_report(ts, ts->rx_buf, payload_len);
+	if (payload_len <= 0) {
+		dev_err_ratelimited(ts->dev, "Failed to read touch data: %d\n", payload_len);
+		return IRQ_NONE;
+	}
+
+	eswin_process_report(ts, ts->rx_buf, payload_len);
 
 	return IRQ_HANDLED;
 }
@@ -274,7 +281,11 @@ static int eswin_probe(struct spi_device *spi)
 	if (error)
 		return dev_err_probe(dev, error, "Failed to request IRQ\n");
 
-	return input_register_device(ts->input);
+	error = input_register_device(ts->input);
+	if (error)
+		return error;
+
+	return 0;
 }
 
 static int eswin_suspend(struct device *dev)
