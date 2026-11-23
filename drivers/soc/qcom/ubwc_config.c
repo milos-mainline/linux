@@ -99,8 +99,6 @@ static const struct qcom_ubwc_cfg_data glymur_data = {
 
 static const struct qcom_ubwc_cfg_data milos_data = {
 	.ubwc_enc_version = UBWC_4_0,
-	.flags = UBWC_SWIZZLE_ENABLE_LVL2 |
-		 UBWC_SWIZZLE_ENABLE_LVL3,
 	/* TODO: highest_bank_bit = 14 for LP_DDR4 */
 	.highest_bank_bit = 15,
 };
